@@ -1,9 +1,7 @@
 import "dotenv/config";
-import { createApp } from "./app";
+import app from "./app";
 
 const PORT = Number(process.env.PORT ?? 4000);
-
-const app = createApp();
 
 const server = app.listen(PORT, () => {
   console.log(`ritvox-backend listening on port ${PORT}`);

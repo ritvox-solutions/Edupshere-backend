@@ -36,3 +36,9 @@ export function createApp(): Express {
 
   return app;
 }
+
+// Vercel's Node.js runtime imports this file directly as a serverless
+// function and requires a default export it can invoke as (req, res) — an
+// Express app instance satisfies that.
+const app = createApp();
+export default app;
