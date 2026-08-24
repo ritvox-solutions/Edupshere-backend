@@ -81,7 +81,7 @@ router.post("/teachers", async (req, res) => {
 router.post("/teachers/bulk", upload.single("file"), async (req, res) => {
   const schoolId = schoolIdGetter();
   if (!req.file) return res.status(400).json({ error: "CSV file required" });
-  const records = parse(req.file.buffer.toString(), { columns: true, skip_empty_lines: true });
+  const records: any[] = parse(req.file.buffer.toString(), { columns: true, skip_empty_lines: true });
   const results = [];
   for (let i=0;i<records.length;i++) {
     const row = records[i];
@@ -93,7 +93,7 @@ router.post("/teachers/bulk", upload.single("file"), async (req, res) => {
       const profile = await prisma.profile.create({ data: { full_name: row.full_name, email: row.email || null, phone: row.phone || null, preferred_language: "en" } });
       await prisma.userRole.create({ data: { user_id: profile.id, school_id: schoolId, role: "teacher" } });
       results.push({ row: i+2, status: "created", id: profile.id });
-    } catch (e) {
+    } catch (e: any) {
       results.push({ row: i+2, errors: [e.message] });
     }
   }
@@ -154,7 +154,7 @@ router.post("/students", async (req, res) => {
 router.post("/students/bulk", upload.single("file"), async (req, res) => {
   const schoolId = schoolIdGetter();
   if (!req.file) return res.status(400).json({ error: "CSV file required" });
-  const records = parse(req.file.buffer.toString(), { columns: true, skip_empty_lines: true });
+  const records: any[] = parse(req.file.buffer.toString(), { columns: true, skip_empty_lines: true });
   const results = [];
   for (let i=0;i<records.length;i++) {
     const row = records[i];
@@ -165,7 +165,7 @@ router.post("/students/bulk", upload.single("file"), async (req, res) => {
     if (errors.length) { results.push({ row: i+2, errors }); continue; }
     try {
       const student = await prisma.student.create({ data: { school_id: schoolId, full_name: row.full_name, dob: toDate(row.dob), section_id: row.section_id, roll_number: row.roll_number, admission_date: toDate(row.admission_date), status: "active" } });
-      const guardians = (row.guardian_phones || "").split(",").map(p=>p.trim()).filter(Boolean);
+      const guardians: string[] = (row.guardian_phones || "").split(",").map((p: string)=>p.trim()).filter(Boolean);
       for (const phone of guardians) {
         let guardian = await prisma.profile.findFirst({ where: { phone } });
         if (!guardian) {
@@ -175,7 +175,7 @@ router.post("/students/bulk", upload.single("file"), async (req, res) => {
         await prisma.studentGuardian.create({ data: { student_id: student.id, guardian_profile_id: guardian.id, relationship: row.relationship || "guardian", is_primary_contact: true } });
       }
       results.push({ row: i+2, status: "created", id: student.id });
-    } catch (e) {
+    } catch (e: any) {
       results.push({ row: i+2, errors: [e.message] });
     }
   }

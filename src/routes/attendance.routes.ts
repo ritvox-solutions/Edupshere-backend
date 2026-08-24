@@ -6,7 +6,7 @@ import { authMiddleware } from "../middleware/auth";
 const router = Router();
 router.use(authMiddleware);
 
-function schoolIdGetter() { return getScope().schoolId; }
+function schoolIdGetter() { return getScope()!.schoolId!; }
 
 router.post("/", async (req, res) => {
   const schoolId = schoolIdGetter();
@@ -14,8 +14,8 @@ router.post("/", async (req, res) => {
   if (!section_id || !date || !Array.isArray(records)) {
     return res.status(400).json({ error: "section_id, date, records array required" });
   }
-  const scope = getScope();
-  const userId = scope.userId;
+  const scope = getScope()!;
+  const userId = scope.userId!;
   if (scope.role !== "school_admin" && scope.role !== "super_admin") {
     const section = await prisma.section.findUnique({ where: { id: section_id }, select: { class_teacher_id: true } });
     const isClassTeacher = section?.class_teacher_id === userId;

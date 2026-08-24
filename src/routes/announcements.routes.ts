@@ -7,7 +7,7 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get("/", async (req, res) => {
-  const scope = getScope();
+  const scope = getScope()!;
   const list = await prisma.announcement.findMany({
     where: { school_id: scope.schoolId! },
     include: { author: { select: { full_name: true } } },
@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
-  const scope = getScope();
+  const scope = getScope()!;
   if (!["school_admin", "teacher", "super_admin"].includes(scope.role!)) {
     return res.status(403).json({ error: "Not authorized to create announcements" });
   }

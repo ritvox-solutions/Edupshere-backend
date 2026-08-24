@@ -5,7 +5,7 @@ import { authMiddleware } from "../middleware/auth";
 
 const router = Router();
 router.use(authMiddleware);
-function schoolIdGetter(){ return getScope().schoolId; }
+function schoolIdGetter(){ return getScope()!.schoolId!; }
 
 router.get("/admin", async (req,res)=>{
   const schoolId = schoolIdGetter();
@@ -18,17 +18,17 @@ router.get("/admin", async (req,res)=>{
 
 router.get("/teacher", async (req,res)=>{
   const schoolId = schoolIdGetter();
-  const userId = getScope().userId;
-  const sections = await prisma.sectionSubject.findMany({ where:{ teacher_id:userId }, select:{ section:{ select:{ id:true, name:true } } }});
+  const userId = getScope()!.userId!;
+  const sections = await prisma.sectionSubject.findMany({ where:{ teacher_id:userId }, select:{ section:{ select:{ id:true, name:true } } }}) as Array<{ section: { id: string; name: string } }>;
   res.json({ sections: sections.map(s=>s.section) });
 });
 
 router.get("/parent", async (req,res)=>{
-  const userId = getScope().userId;
+  const userId = getScope()!.userId!;
   const guardians = await prisma.studentGuardian.findMany({
     where:{ guardian_profile_id:userId },
     include:{ student:{ include:{ section:{ include:{ class:true } } } } },
-  });
+  }) as any[];
   const children = guardians.map(g=>g.student);
 
   const { child_id } = req.query;

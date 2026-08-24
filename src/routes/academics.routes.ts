@@ -9,7 +9,7 @@ const router = Router();
 router.use(authMiddleware);
 const upload = multer({ storage: multer.memoryStorage() });
 
-function schoolIdGetter(){ return getScope().schoolId; }
+function schoolIdGetter(){ return getScope()!.schoolId!; }
 
 router.post("/timetable", async (req,res)=>{
   const schoolId = schoolIdGetter();
@@ -25,9 +25,9 @@ router.post("/timetable", async (req,res)=>{
 });
 router.get("/timetable", async (req,res)=>{
   const schoolId = schoolIdGetter();
-  const scope = getScope();
+  const scope = getScope()!;
   const {section_id}=req.query;
-  const teacherFilter = scope.role === "teacher" ? { teacher_id: scope.userId } : {};
+  const teacherFilter = scope.role === "teacher" ? { teacher_id: scope.userId! } : {};
   const entries = await prisma.timetableEntry.findMany({
     where:{ school_id:schoolId, ...(section_id?{section_id:String(section_id)}:{}), ...teacherFilter },
     include: { section: { include: { class: true } }, subject: true },
@@ -52,9 +52,9 @@ router.post("/subjects", async (req,res)=>{
 
 // Which sections/subjects the current teacher teaches
 router.get("/my-sections", async (req,res)=>{
-  const scope = getScope();
+  const scope = getScope()!;
   const assignments = await prisma.sectionSubject.findMany({
-    where:{ teacher_id: scope.userId },
+    where:{ teacher_id: scope.userId! },
     include: { section: { include: { class: true } }, subject: true },
   });
   res.json(assignments);
@@ -92,7 +92,7 @@ router.post("/homework", upload.single("attachment"), async (req,res)=>{
   const {section_id,subject_id,title,description,due_date}=req.body;
   // file upload to R2 stub
   const attachment_url = req.file ? `https://r2.example.com/${req.file.originalname}` : null;
-  const hw = await prisma.homework.create({ data:{ school_id:schoolId, section_id, subject_id, teacher_id:getScope().userId, title, description, due_date: toDate(due_date), attachment_url }});
+  const hw = await prisma.homework.create({ data:{ school_id:schoolId, section_id, subject_id, teacher_id:getScope()!.userId!, title, description, due_date: toDate(due_date), attachment_url }});
   res.status(201).json(hw);
 });
 router.get("/homework", async (req,res)=>{
@@ -109,7 +109,7 @@ router.get("/exams", async (req,res)=>{
   res.json(exams);
 });
 router.post("/exams", async (req,res)=>{
-  const scope = getScope();
+  const scope = getScope()!;
   if (!["school_admin", "super_admin"].includes(scope.role!)) {
     return res.status(403).json({ error: "Only a school admin can create exams" });
   }
@@ -132,7 +132,7 @@ router.get("/marks", async (req,res)=>{
 router.post("/marks/bulk", async (req,res)=>{
   const schoolId = schoolIdGetter();
   const {exam_id,subject_id, marks}=req.body; // marks:[{student_id, marks_obtained, max_marks}]
-  const entered_by = getScope().userId;
+  const entered_by = getScope()!.userId!;
   const upserted = [];
   for(const m of marks){
     const record = await prisma.marks.upsert({

@@ -1,9 +1,8 @@
-// @ts-nocheck
 import { PrismaClient } from "@prisma/client";
 import { getScope } from "./scope";
 
 declare global {
-  var __prisma: any;
+  var __prisma: ReturnType<typeof createClient> | undefined;
 }
 
 function createClient() {
@@ -38,7 +37,8 @@ function createClient() {
         create({ args, query }) {
           const scope = getScope();
           if (scope?.schoolId && scope.role !== "super_admin") {
-            args.data = { ...args.data, school_id: args.data.school_id ?? scope.schoolId };
+            const data = args.data as any;
+            args.data = { ...data, school_id: data.school_id ?? scope.schoolId };
           }
           return query(args);
         },
