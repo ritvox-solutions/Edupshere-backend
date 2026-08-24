@@ -1,0 +1,2 @@
+-- Initial empty migration: establishes migration history.
+-- Schema tables will be added in subsequent migrations per 05_Backend_Schema_Document.md.
