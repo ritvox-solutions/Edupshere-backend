@@ -4,7 +4,7 @@ import app from "./app";
 const PORT = Number(process.env.PORT ?? 4000);
 
 const server = app.listen(PORT, () => {
-  console.log(`ritvox-backend listening on port ${PORT}`);
+  console.log(`edusphere-backend listening on port ${PORT}`);
 });
 
 async function shutdown() {

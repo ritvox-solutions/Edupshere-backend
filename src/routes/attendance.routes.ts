@@ -2,13 +2,14 @@ import { Router } from "express";
 import prisma from "../lib/prisma";
 import { getScope } from "../lib/scope";
 import { authMiddleware } from "../middleware/auth";
+import { asyncHandler } from "../lib/asyncHandler";
 
 const router = Router();
 router.use(authMiddleware);
 
 function schoolIdGetter() { return getScope()!.schoolId!; }
 
-router.post("/", async (req, res) => {
+router.post("/", asyncHandler(async (req, res) => {
   const schoolId = schoolIdGetter();
   const { section_id, date, records } = req.body;
   if (!section_id || !date || !Array.isArray(records)) {
@@ -16,9 +17,10 @@ router.post("/", async (req, res) => {
   }
   const scope = getScope()!;
   const userId = scope.userId!;
+  const section = await prisma.section.findFirst({ where: { id: section_id } });
+  if (!section) return res.status(400).json({ error: "section_id does not belong to this school" });
   if (scope.role !== "school_admin" && scope.role !== "super_admin") {
-    const section = await prisma.section.findUnique({ where: { id: section_id }, select: { class_teacher_id: true } });
-    const isClassTeacher = section?.class_teacher_id === userId;
+    const isClassTeacher = section.class_teacher_id === userId;
     if (!isClassTeacher) {
       const teacherSections = await prisma.sectionSubject.findMany({ where: { teacher_id: userId, section_id } });
       if (teacherSections.length === 0) return res.status(403).json({ error: "Not authorized for this section" });
@@ -38,9 +40,9 @@ router.post("/", async (req, res) => {
     results.push({ student_id, status });
   }
   res.json({ results });
-});
+}));
 
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const schoolId = schoolIdGetter();
   const { section_id, date } = req.query;
   if (!section_id || !date) return res.status(400).json({ error: "section_id and date required" });
@@ -48,9 +50,9 @@ router.get("/", async (req, res) => {
     where: { school_id: schoolId, section_id: String(section_id), date: new Date(String(date)) },
   });
   res.json(records);
-});
+}));
 
-router.get("/summary", async (req, res) => {
+router.get("/summary", asyncHandler(async (req, res) => {
   const schoolId = schoolIdGetter();
   const { class_id, start_date, end_date, format } = req.query;
   const where: any = { school_id: schoolId };
@@ -70,6 +72,6 @@ router.get("/summary", async (req, res) => {
     return res.send(csv);
   }
   res.json(summary);
-});
+}));
 
 export { router as attendanceRouter };

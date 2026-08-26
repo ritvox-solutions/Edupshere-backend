@@ -38,6 +38,7 @@ model School {
 model Profile {
   id                String   @id @default(uuid())
   full_name         String
+  username          String?  @unique
   phone             String?  @unique
   email             String?  @unique
   password_hash     String?

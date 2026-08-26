@@ -12,7 +12,7 @@ export const healthService = {
 
     return {
       status: "ok",
-      service: "ritvox-backend",
+      service: "edusphere-backend",
       database,
       timestamp: new Date().toISOString(),
     };

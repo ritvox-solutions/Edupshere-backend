@@ -2,11 +2,12 @@ import { Router } from "express";
 import prisma from "../lib/prisma";
 import { getScope } from "../lib/scope";
 import { authMiddleware } from "../middleware/auth";
+import { asyncHandler } from "../lib/asyncHandler";
 
 const router = Router();
 router.use(authMiddleware);
 
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const scope = getScope()!;
   const list = await prisma.announcement.findMany({
     where: { school_id: scope.schoolId! },
@@ -15,9 +16,9 @@ router.get("/", async (req, res) => {
     take: 50,
   });
   res.json(list);
-});
+}));
 
-router.post("/", async (req, res) => {
+router.post("/", asyncHandler(async (req, res) => {
   const scope = getScope()!;
   if (!["school_admin", "teacher", "super_admin"].includes(scope.role!)) {
     return res.status(403).json({ error: "Not authorized to create announcements" });
@@ -40,6 +41,6 @@ router.post("/", async (req, res) => {
     include: { author: { select: { full_name: true } } },
   });
   res.status(201).json(announcement);
-});
+}));
 
 export { router as announcementsRouter };
