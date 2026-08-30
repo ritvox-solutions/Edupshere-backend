@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import * as bcrypt from "bcryptjs";
-import prisma from "../lib/prisma";
+import prisma, { Prisma } from "../lib/prisma";
 import { AuthPayload } from "../middleware/auth";
 import { toDate } from "../lib/dates";
 import { generateTempPassword } from "../lib/password";
@@ -30,18 +30,38 @@ export async function updateMySchool(req: Request, res: Response) {
   if (!["school_admin", "super_admin"].includes(auth.role)) {
     return res.status(403).json({ error: "Not authorized" });
   }
-  const { name, address, academic_year_start, academic_year_end, language_default, logo_url } = req.body;
+  const {
+    name,
+    address,
+    academic_year_start,
+    academic_year_end,
+    language_default,
+    logo_url,
+    contact_email,
+    contact_phone,
+    principal_name,
+    website,
+    timezone,
+    currency,
+  } = req.body;
   try {
+    const data: Record<string, unknown> = {
+      ...(name !== undefined && { name }),
+      ...(address !== undefined && { address }),
+      ...(academic_year_start !== undefined && { academic_year_start: new Date(academic_year_start) }),
+      ...(academic_year_end !== undefined && { academic_year_end: new Date(academic_year_end) }),
+      ...(language_default !== undefined && { language_default }),
+      ...(logo_url !== undefined && { logo_url }),
+      ...(contact_email !== undefined && { contact_email }),
+      ...(contact_phone !== undefined && { contact_phone }),
+      ...(principal_name !== undefined && { principal_name }),
+      ...(website !== undefined && { website }),
+      ...(timezone !== undefined && { timezone }),
+      ...(currency !== undefined && { currency }),
+    };
     const school = await prisma.school.update({
       where: { id: auth.schoolId },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(address !== undefined && { address }),
-        ...(academic_year_start !== undefined && { academic_year_start: new Date(academic_year_start) }),
-        ...(academic_year_end !== undefined && { academic_year_end: new Date(academic_year_end) }),
-        ...(language_default !== undefined && { language_default }),
-        ...(logo_url !== undefined && { logo_url }),
-      },
+      data: data as Prisma.SchoolUpdateInput,
     });
     return res.json({ school });
   } catch (err: any) {

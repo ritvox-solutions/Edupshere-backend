@@ -188,18 +188,25 @@ router.post("/marks/bulk", asyncHandler(async (req,res)=>{
   ]);
   if (!exam || !subject) return res.status(404).json({ error: "Exam or subject not found" });
   const entered_by = getScope()!.userId!;
-  const upserted = [];
-  for(const m of marks){
-    const student = await prisma.student.findFirst({ where: { id: m.student_id } });
-    if (!student) continue;
-    const record = await prisma.marks.upsert({
-      where:{ exam_id_student_id_subject_id:{ exam_id, student_id:m.student_id, subject_id } },
-      update:{ marks_obtained: m.marks_obtained, max_marks:m.max_marks, entered_by },
-      create:{ exam_id, student_id:m.student_id, subject_id, marks_obtained:m.marks_obtained, max_marks:m.max_marks, entered_by }
-    });
-    upserted.push(record);
-  }
-  res.json({ upserted: upserted.length });
+  // Validate every student in one query (Student is auto-scoped to this school),
+  // then write all rows in a single batched transaction.
+  const studentIds: string[] = marks.map((m: any) => m.student_id);
+  const validStudents = await prisma.student.findMany({
+    where: { id: { in: studentIds } },
+    select: { id: true },
+  });
+  const validIds = new Set(validStudents.map((s) => s.id));
+  const toWrite = marks.filter((m: any) => validIds.has(m.student_id));
+  await prisma.$transaction(
+    toWrite.map((m: any) =>
+      prisma.marks.upsert({
+        where: { exam_id_student_id_subject_id: { exam_id, student_id: m.student_id, subject_id } },
+        update: { marks_obtained: m.marks_obtained, max_marks: m.max_marks, entered_by },
+        create: { exam_id, student_id: m.student_id, subject_id, marks_obtained: m.marks_obtained, max_marks: m.max_marks, entered_by },
+      })
+    )
+  );
+  res.json({ upserted: toWrite.length });
 }));
 
 // Report card PDF generation

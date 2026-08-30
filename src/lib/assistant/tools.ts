@@ -1,10 +1,11 @@
-import { tool, type Tool } from "ai";
+import type { Tool } from "ai";
 import { z } from "zod";
 import * as bcrypt from "bcryptjs";
 import prisma from "../prisma";
 import { runWithScope, type Scope } from "../scope";
 import { toDate } from "../dates";
 import { generateTempPassword } from "../password";
+import nativeImport from "../nativeImport";
 
 // Primitives only — never close over the JWT, req, or res. The Agent SDK's
 // tool loop invokes these handlers outside the request's own call stack, so
@@ -15,6 +16,16 @@ export interface AssistantAuthContext {
   schoolId: string | null;
   role: string;
   userId: string;
+}
+
+// "ai" ships ESM-only (no "require" export condition) — see nativeImport.ts
+// for why this needs require.resolve() + a hidden dynamic import rather than
+// a plain import()/require(). Loading it once and caching the binding here
+// lets every tool() call below stay exactly as written, instead of threading
+// it through every builder function and all ~25 call sites.
+let tool: (typeof import("ai"))["tool"];
+async function ensureAiLoaded() {
+  if (!tool) ({ tool } = (await nativeImport(require.resolve("ai"))) as typeof import("ai"));
 }
 
 // Tool execute() results feed straight back to the model as the next turn's
@@ -55,6 +66,38 @@ async function assertSectionAndSubjectInSchool(section_id: string, subject_id: s
 async function assertTeacherInSchool(teacher_id: string, schoolId: string) {
   const role = await prisma.userRole.findFirst({ where: { user_id: teacher_id, school_id: schoolId, role: "teacher" } });
   return Boolean(role);
+}
+
+// Shared by the school_admin and teacher attendance-summary tools — mirrors
+// the aggregation in attendance.routes.ts GET /summary, plus student names
+// (the route only needs ids since the frontend already has the roster; the
+// assistant needs names inline since it can't cross-reference a separate list).
+async function attendanceSummary(where: Record<string, unknown>) {
+  const records = await prisma.attendanceRecord.findMany({ where: where as any, select: { student_id: true, status: true } });
+  if (!records.length) return [];
+  const totals: Record<string, { present: number; total: number }> = {};
+  for (const r of records) {
+    if (!totals[r.student_id]) totals[r.student_id] = { present: 0, total: 0 };
+    totals[r.student_id].total++;
+    if (r.status === "present") totals[r.student_id].present++;
+  }
+  const studentIds = Object.keys(totals);
+  const students = await prisma.student.findMany({ where: { id: { in: studentIds } }, select: { id: true, full_name: true, roll_number: true } });
+  return studentIds.map((id) => {
+    const student = students.find((s) => s.id === id);
+    const t = totals[id];
+    return {
+      student_id: id,
+      full_name: student?.full_name ?? "Unknown",
+      roll_number: student?.roll_number,
+      attendance_pct: Math.round((t.present / t.total) * 100),
+      days_recorded: t.total,
+    };
+  });
+}
+
+function dateRangeFilter(start_date?: string, end_date?: string) {
+  return start_date && end_date ? { date: { gte: new Date(start_date), lte: new Date(end_date) } } : {};
 }
 
 const SCHOOL_ADMIN_PAGES: Record<string, string> = {
@@ -115,6 +158,157 @@ function schoolAdminTools(auth: AssistantAuthContext): Record<string, Tool> {
           include: { user: { select: { id: true, full_name: true, email: true } } },
         });
         return roles.map((r) => r.user);
+      }),
+    }),
+
+    get_attendance_summary: tool({
+      description: "Get each student's attendance percentage, optionally filtered by class and date range. Use this to answer any question about attendance stats. class_id must come from list_classes; omit it to cover the whole school.",
+      inputSchema: z.object({ class_id: z.string().optional(), start_date: z.string().optional(), end_date: z.string().optional() }),
+      execute: async ({ class_id, start_date, end_date }) => scoped(auth, async () => {
+        // AttendanceRecord only has a section_id scalar (no Prisma relation
+        // to Section), so a class filter has to resolve section ids first.
+        let sectionFilter = {};
+        if (class_id) {
+          const sections = await prisma.section.findMany({ where: { class_id }, select: { id: true } });
+          sectionFilter = { section_id: { in: sections.map((s) => s.id) } };
+        }
+        const summary = await attendanceSummary({
+          school_id: schoolId,
+          ...sectionFilter,
+          ...dateRangeFilter(start_date, end_date),
+        });
+        return summary.length ? summary : { summary: "No attendance records found for that filter." };
+      }),
+    }),
+
+    get_school_overview: tool({
+      description:
+        "Headline numbers for the whole school: total students, teachers, classes, sections, subjects, and today's attendance. Call this for any 'how many ...' question about the school overall.",
+      inputSchema: z.object({}),
+      execute: async () => scoped(auth, async () => {
+        const today = new Date(new Date().toISOString().slice(0, 10));
+        const [students, teachers, classes, sections, subjects, byStatus] = await Promise.all([
+          prisma.student.count({ where: { school_id: schoolId } }),
+          prisma.userRole.count({ where: { school_id: schoolId, role: "teacher" } }),
+          prisma.class.count({ where: { school_id: schoolId } }),
+          prisma.section.count({ where: { school_id: schoolId } }),
+          prisma.subject.count({ where: { school_id: schoolId } }),
+          prisma.attendanceRecord.groupBy({ by: ["status"], where: { school_id: schoolId, date: today }, _count: { _all: true } }),
+        ]);
+        const marked = byStatus.reduce((sum, r) => sum + r._count._all, 0);
+        const present = byStatus.find((r) => r.status === "present")?._count._all ?? 0;
+        return {
+          total_students: students,
+          total_teachers: teachers,
+          total_classes: classes,
+          total_sections: sections,
+          total_subjects: subjects,
+          todays_attendance_marked: marked,
+          todays_attendance_pct: marked ? Math.round((present / marked) * 100) : null,
+        };
+      }),
+    }),
+
+    list_students: tool({
+      description:
+        "List students with name, roll number, status, section and class. Optionally filter by class_id (from list_classes) or section_id (from list_sections). Returns the total count and the list. Use this to answer 'how many students' for a class/section or to find a specific student.",
+      inputSchema: z.object({ class_id: z.string().optional(), section_id: z.string().optional() }),
+      execute: async ({ class_id, section_id }) => scoped(auth, async () => {
+        const students = await prisma.student.findMany({
+          where: {
+            school_id: schoolId,
+            ...(section_id ? { section_id } : {}),
+            ...(class_id ? { section: { class_id } } : {}),
+          },
+          include: { section: { include: { class: true } } },
+          orderBy: { full_name: "asc" },
+        });
+        return {
+          count: students.length,
+          students: students.map((s) => ({
+            id: s.id,
+            full_name: s.full_name,
+            roll_number: s.roll_number,
+            status: s.status,
+            section_id: s.section_id,
+            section_name: s.section?.name,
+            class_name: s.section?.class?.name,
+          })),
+        };
+      }),
+    }),
+
+    list_fee_structures: tool({
+      description: "List fee structures in the school (fee head, amount, class, academic year, due date). Optionally filter by class_id.",
+      inputSchema: z.object({ class_id: z.string().optional() }),
+      execute: async ({ class_id }) => scoped(auth, async () => {
+        const fees = await prisma.feeStructure.findMany({
+          where: { school_id: schoolId, ...(class_id ? { class_id } : {}) },
+          include: { class: true },
+          orderBy: { created_at: "desc" },
+        });
+        return fees.map((f) => ({
+          id: f.id,
+          fee_head: f.fee_head,
+          amount: Number(f.amount),
+          academic_year: f.academic_year,
+          due_date: f.due_date,
+          installment_options: f.installment_options,
+          class_name: f.class?.name,
+        }));
+      }),
+    }),
+
+    list_exams: tool({
+      description: "List every exam/assessment cycle in the school with id, name and academic term.",
+      inputSchema: z.object({}),
+      execute: async () => scoped(auth, async () => {
+        const exams = await prisma.exam.findMany({ where: { school_id: schoolId }, orderBy: { created_at: "desc" } });
+        return exams.map((e) => ({ id: e.id, name: e.name, academic_term: e.academic_term }));
+      }),
+    }),
+
+    list_timetable: tool({
+      description: "List scheduled class periods (day, time, section, subject, teacher). Optionally filter by section_id from list_sections.",
+      inputSchema: z.object({ section_id: z.string().optional() }),
+      execute: async ({ section_id }) => scoped(auth, async () => {
+        const entries = await prisma.timetableEntry.findMany({
+          where: { school_id: schoolId, ...(section_id ? { section_id } : {}) },
+          include: { section: { include: { class: true } }, subject: true, teacher: { select: { full_name: true } } },
+          orderBy: [{ day_of_week: "asc" }, { start_time: "asc" }],
+        });
+        return entries.map((e) => ({
+          id: e.id,
+          day_of_week: e.day_of_week,
+          start_time: e.start_time,
+          end_time: e.end_time,
+          section_name: e.section?.name,
+          class_name: e.section?.class?.name,
+          subject_name: e.subject?.name,
+          teacher_name: e.teacher?.full_name,
+        }));
+      }),
+    }),
+
+    list_announcements: tool({
+      description: "List recent announcements in the school, newest first.",
+      inputSchema: z.object({}),
+      execute: async () => scoped(auth, async () => {
+        const list = await prisma.announcement.findMany({
+          where: { school_id: schoolId },
+          include: { author: { select: { full_name: true } } },
+          orderBy: { created_at: "desc" },
+          take: 50,
+        });
+        return list.map((a) => ({
+          id: a.id,
+          title: a.title,
+          body: a.body,
+          audience_type: a.audience_type,
+          priority: a.priority,
+          author_name: a.author?.full_name,
+          created_at: a.created_at,
+        }));
       }),
     }),
 
@@ -322,6 +516,83 @@ function teacherTools(auth: AssistantAuthContext): Record<string, Tool> {
       }),
     }),
 
+    get_section_attendance_summary: tool({
+      description: "Get each student's attendance percentage for a section this teacher teaches, optionally within a date range. Use this to answer any question about attendance stats. section_id must come from list_my_sections.",
+      inputSchema: z.object({ section_id: z.string(), start_date: z.string().optional(), end_date: z.string().optional() }),
+      execute: async ({ section_id, start_date, end_date }) => scoped(auth, async () => {
+        const [assignment, section] = await Promise.all([
+          prisma.sectionSubject.findFirst({ where: { section_id, teacher_id: auth.userId } }),
+          prisma.section.findFirst({ where: { id: section_id } }),
+        ]);
+        if (!assignment && section?.class_teacher_id !== auth.userId) {
+          return { isError: true, summary: "You don't teach that section." };
+        }
+        const summary = await attendanceSummary({ section_id, ...dateRangeFilter(start_date, end_date) });
+        return summary.length ? summary : { summary: "No attendance records found for that section/range." };
+      }),
+    }),
+
+    list_section_students: tool({
+      description:
+        "List the students in a section this teacher teaches (name, roll number, status). section_id must come from list_my_sections. Returns the count and the list — use it to answer 'how many students in 5B'.",
+      inputSchema: z.object({ section_id: z.string() }),
+      execute: async ({ section_id }) => scoped(auth, async () => {
+        const [assignment, section] = await Promise.all([
+          prisma.sectionSubject.findFirst({ where: { section_id, teacher_id: auth.userId } }),
+          prisma.section.findFirst({ where: { id: section_id } }),
+        ]);
+        if (!assignment && section?.class_teacher_id !== auth.userId) {
+          return { isError: true, summary: "You don't teach that section." };
+        }
+        const students = await prisma.student.findMany({
+          where: { section_id },
+          orderBy: { roll_number: "asc" },
+          select: { id: true, full_name: true, roll_number: true, status: true },
+        });
+        return { count: students.length, students };
+      }),
+    }),
+
+    list_my_homework: tool({
+      description: "List homework this teacher has posted, newest due date first. Optionally filter by section_id.",
+      inputSchema: z.object({ section_id: z.string().optional() }),
+      execute: async ({ section_id }) => scoped(auth, async () => {
+        const list = await prisma.homework.findMany({
+          where: { teacher_id: auth.userId, ...(section_id ? { section_id } : {}) },
+          orderBy: { due_date: "desc" },
+          take: 50,
+        });
+        return list.map((h) => ({
+          id: h.id,
+          title: h.title,
+          description: h.description,
+          due_date: h.due_date,
+          section_id: h.section_id,
+          subject_id: h.subject_id,
+        }));
+      }),
+    }),
+
+    list_announcements: tool({
+      description: "List recent announcements in this teacher's school, newest first.",
+      inputSchema: z.object({}),
+      execute: async () => scoped(auth, async () => {
+        const list = await prisma.announcement.findMany({
+          where: { school_id: auth.schoolId! },
+          orderBy: { created_at: "desc" },
+          take: 50,
+        });
+        return list.map((a) => ({
+          id: a.id,
+          title: a.title,
+          body: a.body,
+          audience_type: a.audience_type,
+          priority: a.priority,
+          created_at: a.created_at,
+        }));
+      }),
+    }),
+
     create_homework: tool({
       description: "Post homework for a section/subject this teacher teaches. section_id and subject_id must come from list_my_sections.",
       inputSchema: z.object({
@@ -445,7 +716,8 @@ function superAdminTools(auth: AssistantAuthContext): Record<string, Tool> {
   };
 }
 
-export function buildToolsForRole(auth: AssistantAuthContext): Record<string, Tool> {
+export async function buildToolsForRole(auth: AssistantAuthContext): Promise<Record<string, Tool>> {
+  await ensureAiLoaded();
   if (auth.role === "super_admin") return superAdminTools(auth);
   if (auth.role === "school_admin") return schoolAdminTools(auth);
   if (auth.role === "teacher") return teacherTools(auth);

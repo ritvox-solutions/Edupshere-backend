@@ -42,8 +42,11 @@ export async function refreshToken(req: Request, res: Response) {
     return res.status(400).json({ error: "refreshToken required" });
   }
   try {
-    const payload = verifyRefreshToken(token);
-    const accessToken = signAccessToken(payload);
+    const { userId, schoolId, role } = verifyRefreshToken(token);
+    // Re-sign only the identity claims — the decoded token still carries the
+    // refresh token's own iat/exp, and jwt.sign() throws if the payload
+    // already has an exp while expiresIn is also set.
+    const accessToken = signAccessToken({ userId, schoolId, role });
     return res.json({ accessToken });
   } catch {
     return res.status(401).json({ error: "Invalid refresh token" });

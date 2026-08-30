@@ -20,6 +20,12 @@ model School {
   name                String
   logo_url            String?
   address             String
+  contact_email       String?
+  contact_phone       String?
+  principal_name      String?
+  website             String?
+  timezone            String   @default("Asia/Kolkata")
+  currency            String   @default("INR")
   academic_year_start DateTime @db.Date
   academic_year_end   DateTime @db.Date
   language_default    String   @db.VarChar(2)
@@ -27,46 +33,46 @@ model School {
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
 
-  userRoles UserRole[]
-  classes Class[]
-  subjects Subject[]
-  students Student[]
+  userRoles      UserRole[]
+  classes        Class[]
+  subjects       Subject[]
+  students       Student[]
   fee_structures FeeStructure[]
-  announcements Announcement[]
+  announcements  Announcement[]
 }
 
 model Profile {
-  id                String   @id @default(uuid())
-  full_name         String
-  username          String?  @unique
-  phone             String?  @unique
-  email             String?  @unique
-  password_hash     String?
+  id                 String   @id @default(uuid())
+  full_name          String
+  username           String?  @unique
+  phone              String?  @unique
+  email              String?  @unique
+  password_hash      String?
   preferred_language String?
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
 
-  userRoles UserRole[]
-  section_subjects SectionSubject[]
-  guardians StudentGuardian[]
-  announcements Announcement[]
+  userRoles         UserRole[]
+  section_subjects  SectionSubject[]
+  guardians         StudentGuardian[]
+  announcements     Announcement[]
   timetable_entries TimetableEntry[]
 }
 
 model OtpCode {
-  id         String    @id @default(uuid())
-  phone      String
-  code_hash  String
-  expires_at DateTime
+  id          String    @id @default(uuid())
+  phone       String
+  code_hash   String
+  expires_at  DateTime
   consumed_at DateTime?
-  created_at DateTime @default(now())
+  created_at  DateTime  @default(now())
 }
 
 model UserRole {
-  id       String       @id @default(uuid())
-  user_id  String
+  id        String       @id @default(uuid())
+  user_id   String
   school_id String
-  role     UserRoleEnum
+  role      UserRoleEnum
 
   user   Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
   school School  @relation(fields: [school_id], references: [id], onDelete: Cascade)
@@ -77,32 +83,32 @@ model UserRole {
 }
 
 model Class {
-  id          String   @id @default(uuid())
-  school_id   String
-  name        String
-  display_order Int @default(0)
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id            String   @id @default(uuid())
+  school_id     String
+  name          String
+  display_order Int      @default(0)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
 
-  school   School    @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  sections Section[]
+  school         School         @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  sections       Section[]
   fee_structures FeeStructure[]
 
   @@index([school_id])
 }
 
 model Section {
-  id              String   @id @default(uuid())
-  class_id        String
-  school_id       String
-  name            String
-  class_teacher_id String? 
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id               String   @id @default(uuid())
+  class_id         String
+  school_id        String
+  name             String
+  class_teacher_id String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
 
-  class Class @relation(fields: [class_id], references: [id], onDelete: Cascade)
-  students Student[]
-  section_subjects SectionSubject[]
+  class             Class            @relation(fields: [class_id], references: [id], onDelete: Cascade)
+  students          Student[]
+  section_subjects  SectionSubject[]
   timetable_entries TimetableEntry[]
 
   @@index([school_id])
@@ -110,13 +116,13 @@ model Section {
 }
 
 model Subject {
-  id        String   @id @default(uuid())
-  school_id String
-  name      String
+  id         String   @id @default(uuid())
+  school_id  String
+  name       String
   created_at DateTime @default(now())
 
-  school School @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  section_subjects SectionSubject[]
+  school            School           @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  section_subjects  SectionSubject[]
   timetable_entries TimetableEntry[]
 
   @@index([school_id])
@@ -134,23 +140,24 @@ model SectionSubject {
 
   @@unique([section_id, subject_id, teacher_id])
   @@index([section_id])
+  @@index([teacher_id])
 }
 
 model Student {
-  id            String   @id @default(uuid())
-  school_id     String
-  profile_id    String?
-  full_name     String
-  dob           DateTime? @db.Date
-  section_id    String
-  roll_number   String
+  id             String    @id @default(uuid())
+  school_id      String
+  profile_id     String?
+  full_name      String
+  dob            DateTime? @db.Date
+  section_id     String
+  roll_number    String
   admission_date DateTime? @db.Date
-  status        String @default("active")
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  status         String    @default("active")
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
 
-  school School @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  section Section @relation(fields: [section_id], references: [id], onDelete: Cascade)
+  school    School            @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  section   Section           @relation(fields: [section_id], references: [id], onDelete: Cascade)
   guardians StudentGuardian[]
 
   @@index([school_id])
@@ -158,32 +165,33 @@ model Student {
 }
 
 model StudentGuardian {
-  id                String @id @default(uuid())
-  student_id        String
+  id                  String  @id @default(uuid())
+  student_id          String
   guardian_profile_id String
-  relationship      String
-  is_primary_contact Boolean @default(false)
+  relationship        String
+  is_primary_contact  Boolean @default(false)
 
-  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  student  Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
   guardian Profile @relation(fields: [guardian_profile_id], references: [id], onDelete: Cascade)
 
   @@unique([student_id, guardian_profile_id])
   @@index([student_id])
+  @@index([guardian_profile_id])
 }
 
 model FeeStructure {
-  id            String   @id @default(uuid())
-  school_id     String
-  class_id      String
-  fee_head      String
-  amount        Decimal  @db.Decimal(10,2)
-  due_date      DateTime? @db.Date
-  academic_year String
-  installment_options Int? @default(1)
-  created_at    DateTime @default(now())
+  id                  String    @id @default(uuid())
+  school_id           String
+  class_id            String
+  fee_head            String
+  amount              Decimal   @db.Decimal(10, 2)
+  due_date            DateTime? @db.Date
+  academic_year       String
+  installment_options Int?      @default(1)
+  created_at          DateTime  @default(now())
 
   school School @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  class  Class @relation(fields: [class_id], references: [id], onDelete: Cascade)
+  class  Class  @relation(fields: [class_id], references: [id], onDelete: Cascade)
 
   @@index([school_id])
   @@index([class_id])
@@ -203,28 +211,32 @@ model AttendanceRecord {
   @@index([school_id])
   @@index([section_id])
   @@index([student_id])
+  @@index([school_id, date])
+  @@index([section_id, date])
 }
 
 model NotificationLog {
-  id         String @id @default(uuid())
+  id         String   @id @default(uuid())
   school_id  String
   student_id String
   type       String
   status     String
   payload    String?
   created_at DateTime @default(now())
+
+  @@index([school_id, created_at])
 }
 
 model TimetableEntry {
-  id         String   @id @default(uuid())
-  school_id  String
-  section_id String
-  subject_id String
-  teacher_id String
+  id          String   @id @default(uuid())
+  school_id   String
+  section_id  String
+  subject_id  String
+  teacher_id  String
   day_of_week Int
-  start_time String
-  end_time   String
-  created_at DateTime @default(now())
+  start_time  String
+  end_time    String
+  created_at  DateTime @default(now())
 
   section Section @relation(fields: [section_id], references: [id], onDelete: Cascade)
   subject Subject @relation(fields: [subject_id], references: [id], onDelete: Cascade)
@@ -236,38 +248,44 @@ model TimetableEntry {
 }
 
 model Homework {
-  id          String   @id @default(uuid())
-  school_id   String
-  section_id  String
-  subject_id  String
-  teacher_id  String
-  title       String
-  description String
-  due_date    DateTime? @db.Date
+  id             String    @id @default(uuid())
+  school_id      String
+  section_id     String
+  subject_id     String
+  teacher_id     String
+  title          String
+  description    String
+  due_date       DateTime? @db.Date
   attachment_url String?
-  created_at  DateTime @default(now())
+  created_at     DateTime  @default(now())
+
+  @@index([school_id, section_id])
 }
 
 model Exam {
-  id          String   @id @default(uuid())
-  school_id   String
-  name        String
+  id            String   @id @default(uuid())
+  school_id     String
+  name          String
   academic_term String
-  created_at  DateTime @default(now())
+  created_at    DateTime @default(now())
+
+  @@index([school_id])
 }
 
 model Marks {
-  id            String   @id @default(uuid())
-  exam_id       String
-  student_id    String
-  subject_id    String
-  marks_obtained Decimal @db.Decimal(6,2)
-  max_marks     Decimal @db.Decimal(6,2)
-  entered_by    String
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  id             String   @id @default(uuid())
+  exam_id        String
+  student_id     String
+  subject_id     String
+  marks_obtained Decimal  @db.Decimal(6, 2)
+  max_marks      Decimal  @db.Decimal(6, 2)
+  entered_by     String
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
 
   @@unique([exam_id, student_id, subject_id])
+  @@index([exam_id, subject_id])
+  @@index([student_id])
 }
 
 model Announcement {

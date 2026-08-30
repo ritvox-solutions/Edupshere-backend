@@ -1,10 +1,18 @@
 import express, { Express } from "express";
 import cors from "cors";
-import * as Sentry from "@sentry/node";
 import { corsOptions } from "./middleware/cors";
 import { notFoundHandler, errorHandler } from "./middleware/error";
 
-Sentry.init({ dsn: process.env.SENTRY_DSN });
+// @sentry/node costs ~0.6s to require and its OpenTelemetry auto-instrumentation
+// hooks into every subsequent require — pure overhead when there's no DSN (i.e.
+// local dev). Only pull it in when Sentry is actually configured.
+let setupSentryErrorHandler: ((app: Express) => void) | undefined;
+if (process.env.SENTRY_DSN) {
+  const Sentry = require("@sentry/node") as typeof import("@sentry/node");
+  Sentry.init({ dsn: process.env.SENTRY_DSN });
+  setupSentryErrorHandler = (app) => Sentry.setupExpressErrorHandler(app);
+}
+
 import { healthRouter } from "./routes/health.routes";
 import { authRouter } from "./routes/auth.routes";
 import { schoolsRouter } from "./routes/schools.routes";
@@ -19,7 +27,7 @@ export function createApp(): Express {
   const app = express();
 
   app.disable("x-powered-by");
-  Sentry.setupExpressErrorHandler(app);
+  setupSentryErrorHandler?.(app);
   app.use(cors(corsOptions(app)));
   app.use(express.json({ limit: "1mb" }));
 

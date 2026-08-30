@@ -79,11 +79,11 @@ function createClient() {
   });
 }
 
+// Reuse a single client across warm serverless invocations and dev hot-reloads.
+// Each new PrismaClient opens its own connection pool to Neon, so recreating it
+// per request adds real latency on a serverless deploy.
 const prismaClient = global.__prisma ?? createClient();
-
-if (process.env.NODE_ENV !== "production") {
-  global.__prisma = prismaClient;
-}
+global.__prisma = prismaClient;
 
 export { Prisma };
 export const prisma = prismaClient;
