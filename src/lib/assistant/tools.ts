@@ -110,7 +110,7 @@ const SCHOOL_ADMIN_PAGES: Record<string, string> = {
   announcements: "/admin/announcements",
   "attendance-summary": "/admin/attendance-summary",
   "bulk-report-cards": "/admin/bulk-report-cards",
-  settings: "/admin/settings",
+  profile: "/admin/profile",
 };
 
 function schoolAdminTools(auth: AssistantAuthContext): Record<string, Tool> {

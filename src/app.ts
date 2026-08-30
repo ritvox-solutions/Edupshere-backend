@@ -22,6 +22,7 @@ import { academicsRouter } from "./routes/academics.routes";
 import { dashboardRouter } from "./routes/dashboard.routes";
 import { announcementsRouter } from "./routes/announcements.routes";
 import { assistantRouter } from "./routes/assistant.routes";
+import { profileRouter } from "./routes/profile.routes";
 
 export function createApp(): Express {
   const app = express();
@@ -40,6 +41,7 @@ export function createApp(): Express {
   app.use("/api/v1/dashboard", dashboardRouter);
   app.use("/api/v1/announcements", announcementsRouter);
   app.use("/api/v1/assistant", assistantRouter);
+  app.use("/api/v1/me", profileRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
