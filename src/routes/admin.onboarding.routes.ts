@@ -5,6 +5,7 @@ import prisma from "../lib/prisma";
 import { getScope } from "../lib/scope";
 import { authMiddleware } from "../middleware/auth";
 import { toDate } from "../lib/dates";
+import { parseGradeLevel } from "../lib/grade";
 import { asyncHandler } from "../lib/asyncHandler";
 import * as bcrypt from "bcryptjs";
 
@@ -30,20 +31,53 @@ router.get("/classes", asyncHandler(async (req, res) => {
 
 router.post("/classes", asyncHandler(async (req, res) => {
   const schoolId = schoolIdGetter();
-  const { name, display_order } = req.body;
+  const { name, display_order, grade_level } = req.body;
   if (!name) return res.status(400).json({ error: "name required" });
-  const cls = await prisma.class.create({ data: { school_id: schoolId, name, display_order: display_order ?? 0 } });
+  // Fall back to inferring the grade from the class name ("Grade 5" -> 5).
+  const resolvedGrade =
+    grade_level == null || grade_level === "" ? parseGradeLevel(name) : Number(grade_level);
+  const cls = await prisma.class.create({
+    data: {
+      school_id: schoolId,
+      name,
+      display_order: display_order ?? 0,
+      grade_level: resolvedGrade,
+    },
+  });
   res.status(201).json(cls);
 }));
 
 router.patch("/classes/:id", asyncHandler(async (req, res) => {
   const schoolId = schoolIdGetter();
   const { id } = req.params;
-  const data = req.body;
+  const { name, display_order, grade_level } = req.body;
+  const data: Record<string, unknown> = {
+    ...(name !== undefined && { name }),
+    ...(display_order !== undefined && { display_order: Number(display_order) }),
+    ...(grade_level !== undefined && {
+      grade_level: grade_level == null || grade_level === "" ? null : Number(grade_level),
+    }),
+  };
   // The Prisma extension folds school_id into this where clause, so a class
   // belonging to another school simply won't match (P2025 -> 404), not leak.
   const cls = await prisma.class.update({ where: { id }, data: { ...data, school_id: schoolId } });
   res.json(cls);
+}));
+
+// Backfill grade_level from class names for any class that doesn't have one yet.
+router.post("/classes/infer-grades", asyncHandler(async (req, res) => {
+  const schoolId = schoolIdGetter();
+  const classes = await prisma.class.findMany({ where: { school_id: schoolId, grade_level: null } });
+  let updated = 0;
+  for (const c of classes) {
+    const g = parseGradeLevel(c.name);
+    if (g != null) {
+      await prisma.class.update({ where: { id: c.id }, data: { grade_level: g } });
+      updated++;
+    }
+  }
+  const all = await prisma.class.findMany({ where: { school_id: schoolId }, orderBy: { display_order: "asc" } });
+  res.json({ updated, classes: all });
 }));
 
 router.delete("/classes/:id", asyncHandler(async (req, res) => {

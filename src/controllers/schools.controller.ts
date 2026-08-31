@@ -18,7 +18,10 @@ function defaultAcademicYear(): { start: Date; end: Date } {
 
 export async function getMySchool(req: Request, res: Response) {
   const auth = (req as any).auth as AuthPayload;
-  const school = await prisma.school.findUnique({ where: { id: auth.schoolId } });
+  const school = await prisma.school.findUnique({
+    where: { id: auth.schoolId },
+    include: { board: true },
+  });
   if (!school) {
     return res.status(404).json({ error: "School not found" });
   }
@@ -43,6 +46,7 @@ export async function updateMySchool(req: Request, res: Response) {
     website,
     timezone,
     currency,
+    board_id,
   } = req.body;
   try {
     const data: Record<string, unknown> = {
@@ -58,6 +62,7 @@ export async function updateMySchool(req: Request, res: Response) {
       ...(website !== undefined && { website }),
       ...(timezone !== undefined && { timezone }),
       ...(currency !== undefined && { currency }),
+      ...(board_id !== undefined && { board_id: board_id || null }),
     };
     const school = await prisma.school.update({
       where: { id: auth.schoolId },
@@ -110,6 +115,7 @@ export async function getSchool(req: Request, res: Response) {
   const school = await prisma.school.findUnique({
     where: { id },
     include: {
+      board: true,
       userRoles: {
         where: { role: "school_admin" },
         include: { user: { select: { id: true, full_name: true, email: true, created_at: true } } },

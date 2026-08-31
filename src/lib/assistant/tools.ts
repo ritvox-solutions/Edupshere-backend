@@ -488,10 +488,13 @@ function schoolAdminTools(auth: AssistantAuthContext): Record<string, Tool> {
 
 const TEACHER_PAGES: Record<string, string> = {
   home: "/teacher",
+  timetable: "/teacher/timetable",
+  syllabus: "/teacher/syllabus",
   homework: "/homework",
   marks: "/marks",
   announcements: "/announcements",
   attendance: "/attendance",
+  profile: "/teacher/profile",
 };
 
 function teacherTools(auth: AssistantAuthContext): Record<string, Tool> {

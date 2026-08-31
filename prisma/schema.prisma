@@ -30,15 +30,19 @@ model School {
   academic_year_end   DateTime @db.Date
   language_default    String   @db.VarChar(2)
   subscription_status String
+  board_id            String?
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
 
+  board          CurriculumBoard? @relation(fields: [board_id], references: [id])
   userRoles      UserRole[]
   classes        Class[]
   subjects       Subject[]
   students       Student[]
   fee_structures FeeStructure[]
   announcements  Announcement[]
+
+  @@index([board_id])
 }
 
 model Profile {
@@ -86,6 +90,7 @@ model Class {
   id            String   @id @default(uuid())
   school_id     String
   name          String
+  grade_level   Int?
   display_order Int      @default(0)
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
@@ -116,10 +121,14 @@ model Section {
 }
 
 model Subject {
-  id         String   @id @default(uuid())
-  school_id  String
-  name       String
-  created_at DateTime @default(now())
+  id                      String   @id @default(uuid())
+  school_id               String
+  name                    String
+  // Canonical board-syllabus subject name (e.g. "Mathematics"). The grade is
+  // resolved per section from Class.grade_level at lookup time, so no direct
+  // FK to the grade-specific CurriculumSubject row.
+  curriculum_subject_name String?
+  created_at              DateTime @default(now())
 
   school            School           @relation(fields: [school_id], references: [id], onDelete: Cascade)
   section_subjects  SectionSubject[]
@@ -304,4 +313,79 @@ model Announcement {
   author Profile @relation(fields: [author_id], references: [id], onDelete: Cascade)
 
   @@index([school_id])
+}
+
+// Per-teacher lesson plan against a syllabus unit (Phase 4). Tenant-scoped.
+model LessonPlanEntry {
+  id                 String    @id @default(uuid())
+  school_id          String
+  teacher_id         String
+  section_id         String
+  curriculum_unit_id String?
+  title              String
+  notes              String? // markdown
+  status             String    @default("planned") // planned | in_progress | done
+  planned_date       DateTime? @db.Date
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  @@unique([teacher_id, section_id, curriculum_unit_id])
+  @@index([school_id])
+  @@index([teacher_id, section_id])
+}
+
+// ── Curriculum library ─────────────────────────────────────────────────────
+// Global reference data (no school_id) — board-aligned syllabi that schools
+// resolve against via School.board_id + Class.grade_level + Subject.curriculum_subject_id.
+// See 08_Lesson_Planner_Plan.md.
+
+model CurriculumBoard {
+  id         String   @id @default(uuid())
+  name       String
+  code       String   @unique
+  region     String?
+  created_at DateTime @default(now())
+
+  subjects CurriculumSubject[]
+  schools  School[]
+}
+
+model CurriculumSubject {
+  id       String @id @default(uuid())
+  board_id String
+  grade    Int
+  name     String
+
+  board CurriculumBoard  @relation(fields: [board_id], references: [id], onDelete: Cascade)
+  units CurriculumUnit[]
+
+  @@unique([board_id, grade, name])
+  @@index([board_id])
+}
+
+model CurriculumUnit {
+  id                    String  @id @default(uuid())
+  curriculum_subject_id String
+  sequence              Int
+  title                 String
+  description           String?
+  term                  Int?
+  suggested_periods     Int?
+
+  subject CurriculumSubject @relation(fields: [curriculum_subject_id], references: [id], onDelete: Cascade)
+  topics  CurriculumTopic[]
+
+  @@index([curriculum_subject_id])
+}
+
+model CurriculumTopic {
+  id       String  @id @default(uuid())
+  unit_id  String
+  sequence Int
+  title    String
+  notes    String?
+
+  unit CurriculumUnit @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+
+  @@index([unit_id])
 }

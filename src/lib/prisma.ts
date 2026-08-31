@@ -22,6 +22,7 @@ const TENANT_SCOPED_MODELS = new Set([
   "Homework",
   "Exam",
   "Announcement",
+  "LessonPlanEntry",
 ]);
 
 const WHERE_SCOPED_OPERATIONS = new Set([
